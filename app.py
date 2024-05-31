@@ -1,7 +1,5 @@
 import streamlit as st
 import numpy as np
-import tensorflow as tf
-from transformers import pipeline
 import keras
 import pickle
 
