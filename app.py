@@ -32,6 +32,10 @@ class PositionalEmbedding(Layer):
         })
         return config
 
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
 # Ensure the model files are in the correct path
 MODEL_URL = 'https://drive.google.com/uc?export=download&id=18PvjVRNcJ50CqUKJ-sNILVovIa5vJUj3'
 SOURCE_VECTORIZATION_PATH = 'source_vectorization.pkl'
