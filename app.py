@@ -5,6 +5,12 @@ import pickle
 import re
 from tensorflow.keras.layers import Layer
 
+
+# Define custom standardization function
+@tf.keras.utils.register_keras_serializable()
+def custom_standardization(input_string):
+    lowercase = tf.strings.lower(input_string)
+    return tf.strings.regex_replace(lowercase, '[%s]' % re.escape('!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n'), '')
 # Unified MultiHeadAttention class
 class MultiHeadAttention(Layer):
     def __init__(self, embed_dim, num_heads, **kwargs):
