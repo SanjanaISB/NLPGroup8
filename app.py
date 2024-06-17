@@ -11,70 +11,6 @@ def custom_standardization(input_string):
     lowercase = tf.strings.lower(input_string)
     return tf.strings.regex_replace(lowercase, '[%s]' % re.escape('!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n'), '')
 
-# Unified MultiHeadAttention class
-class MultiHeadAttention(Layer):
-    def __init__(self, embed_dim, num_heads, **kwargs):
-        super().__init__(**kwargs)
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.projection_dim = embed_dim // num_heads
-        
-        if embed_dim % num_heads != 0:
-            raise ValueError(
-                f"Embedding dimension {embed_dim} should be divisible by the number of heads {num_heads}"
-            )
-        
-        self.query_dense = Dense(embed_dim)
-        self.key_dense = Dense(embed_dim)
-        self.value_dense = Dense(embed_dim)
-        self.combine_heads = Dense(embed_dim)
-
-    def split_heads(self, x, batch_size):
-        x = tf.reshape(x, shape=(batch_size, -1, self.num_heads, self.projection_dim))
-        return tf.transpose(x, perm=[0, 2, 1, 3])
-
-    def concat_heads(self, x, batch_size):
-        x = tf.transpose(x, perm=[0, 2, 1, 3])
-        return tf.reshape(x, (batch_size, -1, self.embed_dim))
-
-    def call(self, q, k, v, use_causal_mask=False):
-        batch_size = tf.shape(k)[0]
-        q = self.query_dense(q)
-        k = self.key_dense(k)
-        v = self.value_dense(v)
-        
-        q = self.split_heads(q, batch_size)
-        k = self.split_heads(k, batch_size)
-        v = self.split_heads(v, batch_size)
-        
-        attention = scaled_dot_product_attention(q, k, v, use_causal_mask)
-        concat = self.concat_heads(attention, batch_size)
-        output = self.combine_heads(concat)
-        
-        return output
-
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            "embed_dim": self.embed_dim,
-            "num_heads": self.num_heads,
-        })
-        return config
-
-def scaled_dot_product_attention(q, k, v, use_causal_mask=False):
-    matmul_qk = tf.matmul(q, k, transpose_b=True)
-    dk = tf.cast(tf.shape(k)[-1], tf.float32)
-    scaled_attention_logits = matmul_qk / tf.math.sqrt(dk)
-
-    if use_causal_mask:
-        mask = tf.linalg.band_part(tf.ones_like(scaled_attention_logits), -1, 0)
-        scaled_attention_logits += tf.math.log(mask * 1e-6 + 1.)
-
-    attention_weights = tf.nn.softmax(scaled_attention_logits, axis=-1)
-    output = tf.matmul(attention_weights, v)
-
-    return output
-
 # Define the PositionalEmbedding class
 @tf.keras.utils.register_keras_serializable()
 class PositionalEmbedding(Layer):
@@ -105,6 +41,75 @@ class PositionalEmbedding(Layer):
     @classmethod
     def from_config(cls, config):
         return cls(**config)
+
+# Unified MultiHeadAttention class
+class MultiHeadAttention(Layer):
+    def __init__(self, embed_dim, num_heads, **kwargs):
+        super().__init__(**kwargs)
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.projection_dim = embed_dim // num_heads
+        
+        if embed_dim % num_heads != 0:
+            raise ValueError(
+                f"Embedding dimension {embed_dim} should be divisible by the number of heads {num_heads}"
+            )
+        
+        self.query_dense = Dense(embed_dim)
+        self.key_dense = Dense(embed_dim)
+        self.value_dense = Dense(embed_dim)
+        self.combine_heads = Dense(embed_dim)
+
+    def split_heads(self, x, batch_size):
+        x = tf.reshape(x, shape=(batch_size, -1, self.num_heads, self.projection_dim))
+        return tf.transpose(x, perm=[0, 2, 1, 3])
+
+    def concat_heads(self, x, batch_size):
+        x = tf.transpose(x, perm=[0, 2, 1, 3])
+        return tf.reshape(x, (batch_size, -1, self.embed_dim))
+
+    def call(self, inputs, use_causal_mask=False):
+        q, k, v = inputs
+        batch_size = tf.shape(q)[0]
+
+        q = self.query_dense(q)
+        k = self.key_dense(k)
+        v = self.value_dense(v)
+        
+        q = self.split_heads(q, batch_size)
+        k = self.split_heads(k, batch_size)
+        v = self.split_heads(v, batch_size)
+        
+        attention = self.scaled_dot_product_attention(q, k, v, use_causal_mask)
+        concat = self.concat_heads(attention, batch_size)
+        output = self.combine_heads(concat)
+        
+        return output
+
+    def scaled_dot_product_attention(self, q, k, v, use_causal_mask):
+        matmul_qk = tf.matmul(q, k, transpose_b=True)
+        dk = tf.cast(tf.shape(k)[-1], tf.float32)
+        scaled_attention_logits = matmul_qk / tf.math.sqrt(dk)
+
+        if use_causal_mask:
+            mask = tf.linalg.band_part(tf.ones_like(scaled_attention_logits), -1, 0)
+            scaled_attention_logits += tf.math.log(mask * 1e-9 + 1e-9)
+
+        attention_weights = tf.nn.softmax(scaled_attention_logits, axis=-1)
+        output = tf.matmul(attention_weights, v)
+
+        return output
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "embed_dim": self.embed_dim,
+            "num_heads": self.num_heads,
+        })
+        return config
+
+# Register the custom layer
+tf.keras.utils.get_custom_objects().update({"MultiHeadAttention": MultiHeadAttention})
 
 # Define the TransformerEncoder class
 @tf.keras.utils.register_keras_serializable()
