@@ -18,7 +18,7 @@ class PositionalEmbedding(keras.layers.Layer):
         return embedded_tokens + embedded_positions
 
     def compute_mask(self, inputs, mask=None):
-        return keras.ops.not_equal(inputs, 0)
+        return tf.math.not_equal(inputs, 0)
 
     def get_config(self):
         config = super().get_config()
@@ -49,6 +49,9 @@ class MultiHeadAttention(keras.layers.Layer):
         q = self.split_heads(self.wq(q), batch_size)
         k = self.split_heads(self.wk(k), batch_size)
         v = self.split_heads(self.wv(v), batch_size)
+
+        if mask is not None:
+            mask = tf.cast(mask, dtype=tf.float32)  # Convert mask to float32
 
         scaled_attention = self.scaled_dot_product_attention(q, k, v, mask)
         scaled_attention = tf.transpose(scaled_attention, perm=[0, 2, 1, 3])
