@@ -3,24 +3,6 @@ import tensorflow as tf
 import numpy as np
 import pickle
 
-!pip install --upgrade tensorflow
-
-import tensorflow as tf
-from tensorflow.keras.layers.preprocessing import TextVectorization
-from tensorflow.keras.utils import register_keras_serializable
-
-@register_keras_serializable()
-def custom_standardization(input_string):
-    lowercase = tf.strings.lower(input_string)
-    return tf.strings.regex_replace(lowercase, f"[{re.escape(strip_chars)}]", "")
-
-
-@register_keras_serializable()
-def custom_standardization(input_string):
-    lowercase = tf.strings.lower(input_string)
-    return tf.strings.regex_replace(lowercase, f"[{re.escape(strip_chars)}]", "")
-
-
 # Load vectorization objects
 with open('source_vectorization.pkl', 'rb') as f:
     source_vectorization = pickle.load(f)
