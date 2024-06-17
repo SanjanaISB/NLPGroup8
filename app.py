@@ -202,3 +202,4 @@ if st.button("Translate"):
         st.write(translated_sentence)
     else:
         st.write("Please enter an English sentence.")
+
