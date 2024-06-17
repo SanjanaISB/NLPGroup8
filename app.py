@@ -3,8 +3,7 @@ import tensorflow as tf
 import numpy as np
 import pickle
 import re
-import keras
-from keras.layers import Layer
+from tensorflow.keras.layers import Layer
 
 # Define custom standardization function
 @tf.keras.utils.register_keras_serializable()
@@ -17,8 +16,8 @@ def custom_standardization(input_string):
 class PositionalEmbedding(Layer):
     def __init__(self, sequence_length, input_dim, output_dim, **kwargs):
         super(PositionalEmbedding, self).__init__(**kwargs)
-        self.token_embeddings = keras.layers.Embedding(input_dim=input_dim, output_dim=output_dim)
-        self.position_embeddings = keras.layers.Embedding(input_dim=sequence_length, output_dim=output_dim)
+        self.token_embeddings = tf.keras.layers.Embedding(input_dim=input_dim, output_dim=output_dim)
+        self.position_embeddings = tf.keras.layers.Embedding(input_dim=sequence_length, output_dim=output_dim)
         self.sequence_length = sequence_length
         self.input_dim = input_dim
         self.output_dim = output_dim
