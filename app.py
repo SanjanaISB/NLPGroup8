@@ -3,14 +3,14 @@ import tensorflow as tf
 import numpy as np
 import pickle
 import re
-from tensorflow.keras.layers import Layer
-
+from tensorflow.keras.layers import Layer, Dense
 
 # Define custom standardization function
 @tf.keras.utils.register_keras_serializable()
 def custom_standardization(input_string):
     lowercase = tf.strings.lower(input_string)
     return tf.strings.regex_replace(lowercase, '[%s]' % re.escape('!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n'), '')
+
 # Unified MultiHeadAttention class
 class MultiHeadAttention(Layer):
     def __init__(self, embed_dim, num_heads, **kwargs):
@@ -74,6 +74,115 @@ def scaled_dot_product_attention(q, k, v, use_causal_mask=False):
     output = tf.matmul(attention_weights, v)
 
     return output
+
+# Define the PositionalEmbedding class
+@tf.keras.utils.register_keras_serializable()
+class PositionalEmbedding(Layer):
+    def __init__(self, sequence_length, input_dim, output_dim, **kwargs):
+        super(PositionalEmbedding, self).__init__(**kwargs)
+        self.token_embeddings = tf.keras.layers.Embedding(input_dim=input_dim, output_dim=output_dim)
+        self.position_embeddings = tf.keras.layers.Embedding(input_dim=sequence_length, output_dim=output_dim)
+        self.sequence_length = sequence_length
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+
+    def call(self, inputs):
+        embedded_tokens = self.token_embeddings(inputs)
+        length = tf.shape(inputs)[-1]
+        positions = tf.range(start=0, limit=length, delta=1)
+        embedded_positions = self.position_embeddings(positions)
+        return embedded_tokens + embedded_positions
+
+    def get_config(self):
+        config = super(PositionalEmbedding, self).get_config()
+        config.update({
+            "input_dim": self.input_dim,
+            "output_dim": self.output_dim,
+            "sequence_length": self.sequence_length,
+        })
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+# Define the TransformerEncoder class
+@tf.keras.utils.register_keras_serializable()
+class TransformerEncoder(Layer):
+    def __init__(self, embed_dim, dense_dim, num_heads, **kwargs):
+        super(TransformerEncoder, self).__init__(**kwargs)
+        self.embed_dim = embed_dim
+        self.dense_dim = dense_dim
+        self.num_heads = num_heads
+        self.mha = MultiHeadAttention(embed_dim, num_heads)
+        self.ffn = tf.keras.Sequential([
+            tf.keras.layers.Dense(dense_dim, activation="relu"),
+            tf.keras.layers.Dense(embed_dim),
+        ])
+        self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self.dropout1 = tf.keras.layers.Dropout(0.1)
+        self.dropout2 = tf.keras.layers.Dropout(0.1)
+
+    def call(self, inputs, training=False):
+        attn_output = self.mha([inputs, inputs, inputs])
+        attn_output = self.dropout1(attn_output, training=training)
+        out1 = self.layernorm1(inputs + attn_output)
+        ffn_output = self.ffn(out1)
+        ffn_output = self.dropout2(ffn_output, training=training)
+        return self.layernorm2(out1 + ffn_output)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "embed_dim": self.embed_dim,
+            "dense_dim": self.dense_dim,
+            "num_heads": self.num_heads,
+        })
+        return config
+
+# Define the TransformerDecoder class
+@tf.keras.utils.register_keras_serializable()
+class TransformerDecoder(Layer):
+    def __init__(self, embed_dim, dense_dim, num_heads, **kwargs):
+        super(TransformerDecoder, self).__init__(**kwargs)
+        self.embed_dim = embed_dim
+        self.dense_dim = dense_dim
+        self.num_heads = num_heads
+        self.mha1 = MultiHeadAttention(embed_dim, num_heads)
+        self.mha2 = MultiHeadAttention(embed_dim, num_heads)
+        self.ffn = tf.keras.Sequential([
+            tf.keras.layers.Dense(dense_dim, activation="relu"),
+            tf.keras.layers.Dense(embed_dim),
+        ])
+        self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self.layernorm3 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self.dropout1 = tf.keras.layers.Dropout(0.1)
+        self.dropout2 = tf.keras.layers.Dropout(0.1)
+        self.dropout3 = tf.keras.layers.Dropout(0.1)
+
+    def call(self, inputs, enc_output, training=False):
+        attn1 = self.mha1([inputs, inputs, inputs])
+        attn1 = self.dropout1(attn1, training=training)
+        out1 = self.layernorm1(inputs + attn1)
+
+        attn2 = self.mha2([out1, enc_output, enc_output])
+        attn2 = self.dropout2(attn2, training=training)
+        out2 = self.layernorm2(out1 + attn2)
+
+        ffn_output = self.ffn(out2)
+        ffn_output = self.dropout3(ffn_output, training=training)
+        return self.layernorm3(out2 + ffn_output)
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "embed_dim": self.embed_dim,
+            "dense_dim": self.dense_dim,
+            "num_heads": self.num_heads,
+        })
+        return config
 
 # Load vectorization objects
 with open('source_vectorization.pkl', 'rb') as f:
