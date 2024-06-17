@@ -18,7 +18,7 @@ class PositionalEmbedding(keras.layers.Layer):
         return embedded_tokens + embedded_positions
 
     def compute_mask(self, inputs, mask=None):
-        return keras.ops.not_equal(inputs, 0)
+        return keras.backend.not_equal(inputs, 0)
 
     def get_config(self):
         config = super().get_config()
@@ -90,7 +90,7 @@ class TransformerEncoder(keras.layers.Layer):
         self.dropout1 = keras.layers.Dropout(0.1)
         self.dropout2 = keras.layers.Dropout(0.1)
 
-    def call(self, x, training, mask=None):
+    def call(self, x, training=None, mask=None):
         attn_output = self.mha(x, x, x, mask, training=training)
         attn_output = self.dropout1(attn_output, training=training)
         out1 = self.layernorm1(x + attn_output)
@@ -126,7 +126,7 @@ class TransformerDecoder(keras.layers.Layer):
         self.dropout2 = keras.layers.Dropout(0.1)
         self.dropout3 = keras.layers.Dropout(0.1)
 
-    def call(self, x, enc_output, training, look_ahead_mask=None, padding_mask=None):
+    def call(self, x, enc_output, training=None, look_ahead_mask=None, padding_mask=None):
         attn1 = self.mha1(x, x, x, look_ahead_mask, training=training)
         attn1 = self.dropout1(attn1, training=training)
         out1 = self.layernorm1(x + attn1)
