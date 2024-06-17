@@ -5,7 +5,7 @@ import pickle
 from transformers import pipeline
 
 # Load the trained Transformer model and vectorizers
-@st.cache(allow_output_mutation=True)
+@st.cache_resource(allow_output_mutation=True)
 def load_model():
     model = tf.keras.models.load_model('transformer_model.h5', custom_objects={
         'PositionalEmbedding': PositionalEmbedding,
@@ -19,7 +19,7 @@ def load_model():
     })
     return model
 
-@st.cache(allow_output_mutation=True)
+@st.cache_resource(allow_output_mutation=True)
 def load_vectorizers():
     with open('source_vectorization.pkl', 'rb') as f:
         source_vectorization = pickle.load(f)
