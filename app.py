@@ -8,7 +8,7 @@ from transformers import pipeline
 import requests
 
 # Ensure the model files are in the correct path
-MODEL_URL = 'https://media.githubusercontent.com/media/VADSGroup16/NLPGroup8/main/transformer_model.h5'
+MODEL_URL = 'https://drive.google.com/uc?export=download&id=18PvjVRNcJ50CqUKJ-sNILVovIa5vJUj3'
 SOURCE_VECTORIZATION_PATH = 'source_vectorization.pkl'
 TARGET_VECTORIZATION_PATH = 'target_vectorization.pkl'
 
