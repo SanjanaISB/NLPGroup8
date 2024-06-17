@@ -1,3 +1,5 @@
+# custom_layers.py
+
 import tensorflow as tf
 from tensorflow import keras
 
@@ -18,7 +20,7 @@ class PositionalEmbedding(keras.layers.Layer):
         return embedded_tokens + embedded_positions
 
     def compute_mask(self, inputs, mask=None):
-        return keras.backend.not_equal(inputs, 0)
+        return tf.cast(tf.not_equal(inputs, 0), dtype=tf.float32)
 
     def get_config(self):
         config = super().get_config()
@@ -34,37 +36,36 @@ class MultiHeadAttention(keras.layers.Layer):
         super().__init__(**kwargs)
         self.embed_dim = embed_dim
         self.num_heads = num_heads
-        if embed_dim % num_heads != 0:
-            raise ValueError(f"embed_dim = {embed_dim} should be divisible by num_heads = {num_heads}")
-        self.q_linear = keras.layers.Dense(embed_dim)
-        self.k_linear = keras.layers.Dense(embed_dim)
-        self.v_linear = keras.layers.Dense(embed_dim)
-        self.concat_linear = keras.layers.Dense(embed_dim)
+        self.depth = embed_dim // num_heads
+        self.wq = keras.layers.Dense(embed_dim)
+        self.wk = keras.layers.Dense(embed_dim)
+        self.wv = keras.layers.Dense(embed_dim)
+        self.dense = keras.layers.Dense(embed_dim)
 
     def split_heads(self, x, batch_size):
-        x = tf.reshape(x, (batch_size, -1, self.num_heads, self.embed_dim // self.num_heads))
+        x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
         return tf.transpose(x, perm=[0, 2, 1, 3])
 
-    def concat_heads(self, x, batch_size):
-        x = tf.transpose(x, perm=[0, 2, 1, 3])
-        return tf.reshape(x, (batch_size, -1, self.embed_dim))
-
-    def call(self, q, k, v, use_causal_mask=False):
+    def call(self, q, k, v, mask=None):
         batch_size = tf.shape(q)[0]
-        q = self.q_linear(q)
-        k = self.k_linear(k)
-        v = self.v_linear(v)
-        q = self.split_heads(q, batch_size)
-        k = self.split_heads(k, batch_size)
-        v = self.split_heads(v, batch_size)
-        scaled_scores = tf.matmul(q, k, transpose_b=True) / tf.math.sqrt(tf.cast(tf.shape(k)[-1], tf.float32))
-        if use_causal_mask:
-            mask = tf.linalg.band_part(tf.ones((tf.shape(q)[2], tf.shape(k)[2])), -1, 0)
-            scaled_scores = scaled_scores * mask - 1e9 * (1 - mask)
-        weights = tf.nn.softmax(scaled_scores, axis=-1)
-        attention = tf.matmul(weights, v)
-        concat_attention = self.concat_heads(attention, batch_size)
-        output = self.concat_linear(concat_attention)
+        q = self.split_heads(self.wq(q), batch_size)
+        k = self.split_heads(self.wk(k), batch_size)
+        v = self.split_heads(self.wv(v), batch_size)
+
+        scaled_attention = self.scaled_dot_product_attention(q, k, v, mask)
+        scaled_attention = tf.transpose(scaled_attention, perm=[0, 2, 1, 3])
+        concat_attention = tf.reshape(scaled_attention, (batch_size, -1, self.embed_dim))
+        output = self.dense(concat_attention)
+        return output
+
+    def scaled_dot_product_attention(self, q, k, v, mask):
+        matmul_qk = tf.matmul(q, k, transpose_b=True)
+        dk = tf.cast(tf.shape(k)[-1], tf.float32)
+        scaled_attention_logits = matmul_qk / tf.math.sqrt(dk)
+        if mask is not None:
+            scaled_attention_logits += (mask * -1e9)
+        attention_weights = tf.nn.softmax(scaled_attention_logits, axis=-1)
+        output = tf.matmul(attention_weights, v)
         return output
 
     def get_config(self):
@@ -81,17 +82,23 @@ class TransformerEncoder(keras.layers.Layer):
         self.embed_dim = embed_dim
         self.dense_dim = dense_dim
         self.num_heads = num_heads
-        self.layer_norm_1 = keras.layers.LayerNormalization()
-        self.layer_norm_2 = keras.layers.LayerNormalization()
-        self.self_attention = MultiHeadAttention(embed_dim, num_heads)
-        self.feed_forward = keras.Sequential([
-            keras.layers.Dense(dense_dim, activation="relu"),
-            keras.layers.Dense(embed_dim),
+        self.mha = MultiHeadAttention(embed_dim, num_heads)
+        self.ffn = keras.Sequential([
+            keras.layers.Dense(dense_dim, activation='relu'),
+            keras.layers.Dense(embed_dim)
         ])
+        self.layernorm1 = keras.layers.LayerNormalization(epsilon=1e-6)
+        self.layernorm2 = keras.layers.LayerNormalization(epsilon=1e-6)
+        self.dropout1 = keras.layers.Dropout(0.1)
+        self.dropout2 = keras.layers.Dropout(0.1)
 
-    def call(self, inputs):
-        x = self.layer_norm_1(inputs + self.self_attention(inputs, inputs, inputs))
-        return self.layer_norm_2(x + self.feed_forward(x))
+    def call(self, x, training, mask=None):
+        attn_output = self.mha(x, x, x, mask)
+        attn_output = self.dropout1(attn_output, training=training)
+        out1 = self.layernorm1(x + attn_output)
+        ffn_output = self.ffn(out1)
+        ffn_output = self.dropout2(ffn_output, training=training)
+        return self.layernorm2(out1 + ffn_output)
 
     def get_config(self):
         config = super().get_config()
@@ -108,20 +115,31 @@ class TransformerDecoder(keras.layers.Layer):
         self.embed_dim = embed_dim
         self.dense_dim = dense_dim
         self.num_heads = num_heads
-        self.layer_norm_1 = keras.layers.LayerNormalization()
-        self.layer_norm_2 = keras.layers.LayerNormalization()
-        self.layer_norm_3 = keras.layers.LayerNormalization()
-        self.causal_self_attention = MultiHeadAttention(embed_dim, num_heads)
-        self.cross_attention = MultiHeadAttention(embed_dim, num_heads)
-        self.feed_forward = keras.Sequential([
-            keras.layers.Dense(dense_dim, activation="relu"),
-            keras.layers.Dense(embed_dim),
+        self.mha1 = MultiHeadAttention(embed_dim, num_heads)
+        self.mha2 = MultiHeadAttention(embed_dim, num_heads)
+        self.ffn = keras.Sequential([
+            keras.layers.Dense(dense_dim, activation='relu'),
+            keras.layers.Dense(embed_dim)
         ])
+        self.layernorm1 = keras.layers.LayerNormalization(epsilon=1e-6)
+        self.layernorm2 = keras.layers.LayerNormalization(epsilon=1e-6)
+        self.layernorm3 = keras.layers.LayerNormalization(epsilon=1e-6)
+        self.dropout1 = keras.layers.Dropout(0.1)
+        self.dropout2 = keras.layers.Dropout(0.1)
+        self.dropout3 = keras.layers.Dropout(0.1)
 
-    def call(self, inputs, context):
-        x = self.layer_norm_1(inputs + self.causal_self_attention(inputs, inputs, inputs, use_causal_mask=True))
-        x = self.layer_norm_2(x + self.cross_attention(x, context, context))
-        return self.layer_norm_3(x + self.feed_forward(x))
+    def call(self, x, enc_output, training, look_ahead_mask=None, padding_mask=None):
+        attn1 = self.mha1(x, x, x, look_ahead_mask)
+        attn1 = self.dropout1(attn1, training=training)
+        out1 = self.layernorm1(x + attn1)
+
+        attn2 = self.mha2(out1, enc_output, enc_output, padding_mask)
+        attn2 = self.dropout2(attn2, training=training)
+        out2 = self.layernorm2(out1 + attn2)
+
+        ffn_output = self.ffn(out2)
+        ffn_output = self.dropout3(ffn_output, training=training)
+        return self.layernorm3(out2 + ffn_output)
 
     def get_config(self):
         config = super().get_config()
