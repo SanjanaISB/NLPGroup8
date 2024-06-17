@@ -4,6 +4,7 @@ import numpy as np
 import pickle
 import re
 from tensorflow.keras.layers import Layer
+from tensorflow.keras.models import model_from_json
 
 # Define custom standardization function
 @tf.keras.utils.register_keras_serializable()
@@ -171,16 +172,6 @@ class TransformerDecoder(Layer):
         })
         return config
 
-# Load the model with custom objects
-def load_model(filepath):
-    return tf.keras.models.load_model(filepath, custom_objects={
-        'PositionalEmbedding': PositionalEmbedding,
-        'custom_standardization': custom_standardization,
-        'MultiHeadAttention': MultiHeadAttention,
-        'TransformerEncoder': TransformerEncoder,
-        'TransformerDecoder': TransformerDecoder
-    })
-
 # Load vectorization objects
 with open('source_vectorization.pkl', 'rb') as f:
     source_vectorization = pickle.load(f)
@@ -188,8 +179,19 @@ with open('source_vectorization.pkl', 'rb') as f:
 with open('target_vectorization.pkl', 'rb') as f:
     target_vectorization = pickle.load(f)
 
-# Load the Transformer model
-transformer = load_model('transformer_model.h5')
+# Load the model architecture and weights
+with open('transformer_model_architecture.json', 'r') as f:
+    model_json = f.read()
+
+transformer = model_from_json(model_json, custom_objects={
+    'PositionalEmbedding': PositionalEmbedding,
+    'custom_standardization': custom_standardization,
+    'MultiHeadAttention': MultiHeadAttention,
+    'TransformerEncoder': TransformerEncoder,
+    'TransformerDecoder': TransformerDecoder
+})
+
+transformer.load_weights('transformer_model_weights.h5')
 
 # Define max decoded sentence length
 max_decoded_sentence_length = 30
