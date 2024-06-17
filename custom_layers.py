@@ -18,7 +18,7 @@ class PositionalEmbedding(keras.layers.Layer):
         return embedded_tokens + embedded_positions
 
     def compute_mask(self, inputs, mask=None):
-        return tf.math.not_equal(inputs, 0)
+        return keras.backend.not_equal(inputs, 0)
 
     def get_config(self):
         config = super().get_config()
