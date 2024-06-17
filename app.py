@@ -14,23 +14,24 @@ def custom_standardization(input_string):
 
 # Define the PositionalEmbedding class
 @tf.keras.utils.register_keras_serializable()
-class PositionalEmbedding(keras.layers.Layer):
+class PositionalEmbedding(Layer):
     def __init__(self, sequence_length, input_dim, output_dim, **kwargs):
         super().__init__(**kwargs)
-        self.token_embeddings = keras.layers.Embedding(input_dim=input_dim, output_dim=output_dim) # token embedding layer
-        self.position_embeddings = keras.layers.Embedding(input_dim=sequence_length, output_dim=output_dim) # position embedding layer
+        self.token_embeddings = tf.keras.layers.Embedding(input_dim=input_dim, output_dim=output_dim)
+        self.position_embeddings = tf.keras.layers.Embedding(input_dim=sequence_length, output_dim=output_dim)
         self.sequence_length = sequence_length
         self.input_dim = input_dim
         self.output_dim = output_dim
 
     def call(self, inputs):
-        embedded_tokens = self.token_embeddings(inputs) # embed the tokens
+        embedded_tokens = self.token_embeddings(inputs)
         length = tf.shape(inputs)[-1]
-        positions = tf.range(start=0, limit=length, delta=1) # create the positional information
-        embedded_positions = self.position_embeddings(positions) # embed the positions
-        return embedded_tokens + embedded_positions # add the token and position embeddings to create the positional embeddings
+        positions = tf.range(start=0, limit=length, delta=1)
+        embedded_positions = self.position_embeddings(positions)
+        return embedded_tokens + embedded_positions
+
     def compute_mask(self, inputs, mask=None):
-        return keras.ops.not_equal(inputs, 0)
+        return tf.not_equal(inputs, 0)
 
     def get_config(self):
         config = super(PositionalEmbedding, self).get_config()
@@ -41,57 +42,59 @@ class PositionalEmbedding(keras.layers.Layer):
         })
         return config
 
+# Define the scaled dot product attention function
+def scaled_dot_product_attention(q, k, v, use_causal_mask=False):
+    d_k = tf.cast(tf.shape(k)[-1], tf.float32)
+    scores = tf.matmul(q, k, transpose_b=True)  # Matmul of Q and K
+    scaled_scores = scores / tf.math.sqrt(d_k)  # Scale
+    if use_causal_mask:
+        mask = tf.linalg.band_part(tf.ones_like(scaled_scores), -1, 0)
+        scaled_scores += (mask - 1) * 1e9  # Mask (opt.)
+    weights = tf.nn.softmax(scaled_scores, axis=-1)  # SoftMax
+    output = tf.matmul(weights, v)  # Matmul of SoftMax and V
+    return output
+
 # Define the MultiHeadAttention class
-class MultiHeadAttention(keras.layers.Layer):
-    def __init__(self, embed_dim, h, **kwargs):
+class MultiHeadAttention(Layer):
+    def __init__(self, embed_dim, num_heads, **kwargs):
         super().__init__(**kwargs)
         self.embed_dim = embed_dim
-        self.h = h
-        if embed_dim % h != 0:
-            raise ValueError(
-                f"dimension of the embedding space = {embed_dim} should be divisible by number of heads = {h}"
-            )
-        self.q_linear = keras.layers.Dense(embed_dim)
-        self.k_linear = keras.layers.Dense(embed_dim)
-        self.v_linear = keras.layers.Dense(embed_dim)
-        self.concat_linear = keras.layers.Dense(embed_dim)
+        self.num_heads = num_heads
+        self.projection_dim = embed_dim // num_heads
+
+        if embed_dim % num_heads != 0:
+            raise ValueError(f"Embedding dimension {embed_dim} should be divisible by the number of heads {num_heads}")
+
+        self.query_dense = Dense(embed_dim)
+        self.key_dense = Dense(embed_dim)
+        self.value_dense = Dense(embed_dim)
+        self.combine_heads = Dense(embed_dim)
 
     def split_heads(self, x, batch_size):
-        x = tf.reshape(x, shape=(batch_size, -1, self.h, self.embed_dim // self.h))
+        x = tf.reshape(x, shape=(batch_size, -1, self.num_heads, self.projection_dim))
         return tf.transpose(x, perm=[0, 2, 1, 3])
+
     def concat_heads(self, x, batch_size):
         x = tf.transpose(x, perm=[0, 2, 1, 3])
         return tf.reshape(x, (batch_size, -1, self.embed_dim))
 
-    def call(self, q, k, v, use_causal_mask=False):
-        batch_size = tf.shape(k)[0]
-        q = self.q_linear(q)
-        k = self.k_linear(k)
-        v = self.v_linear(v)
+    def call(self, inputs, use_causal_mask=False):
+        q, k, v = inputs
+        batch_size = tf.shape(q)[0]
+
+        q = self.query_dense(q)
+        k = self.key_dense(k)
+        v = self.value_dense(v)
+
         q = self.split_heads(q, batch_size)
         k = self.split_heads(k, batch_size)
         v = self.split_heads(v, batch_size)
+
         attention = scaled_dot_product_attention(q, k, v, use_causal_mask)
         concat = self.concat_heads(attention, batch_size)
-        concat = self.concat_linear(concat)
-        return concat
-    def get_config(self):
-        config = super(MultiHeadAttention, self).get_config()
-        config.update({
-            "embed_dim": self.embed_dim,
-            "h": self.h,
-        })
-        return config
+        output = self.combine_heads(concat)
 
- def scaled_dot_product_attention(q, k, v, use_causal_mask=False):
-    d_k = tf.cast(tf.shape(k)[-1], tf.float32)
-    scores = tf.matmul(q, k, transpose_b=True) # Matmul of Q and K
-    scaled_scores = scores / tf.math.sqrt(d_k) # Scale
-    if use_causal_mask:
-        scaled_scores = mask_attn_weights(scaled_scores) # Mask (opt.)
-    weights = tf.nn.softmax(scaled_scores, axis=-1) # SoftMax
-    output = tf.matmul(weights, v) # Matmul of SoftMax and V
-    return output
+        return output
 
     def get_config(self):
         config = super().get_config()
@@ -103,22 +106,23 @@ class MultiHeadAttention(keras.layers.Layer):
 
 # Define the TransformerEncoder class
 @tf.keras.utils.register_keras_serializable()
-class TransformerEncoder(keras.layers.Layer):
+class TransformerEncoder(Layer):
     def __init__(self, embed_dim, dense_dim, num_heads, **kwargs):
         super().__init__(**kwargs)
         self.embed_dim = embed_dim
         self.dense_dim = dense_dim
         self.num_heads = num_heads
-        self.layer_norm_1 = keras.layers.LayerNormalization()
-        self.layer_norm_2 = keras.layers.LayerNormalization()
-        self.global_self_attention = MultiHeadAttention(embed_dim=embed_dim, h=num_heads)
-        self.feed_forward = keras.Sequential(
-            [keras.layers.Dense(dense_dim, activation="relu"),
-             keras.layers.Dense(embed_dim),]
+        self.layer_norm_1 = tf.keras.layers.LayerNormalization()
+        self.layer_norm_2 = tf.keras.layers.LayerNormalization()
+        self.global_self_attention = MultiHeadAttention(embed_dim=embed_dim, num_heads=num_heads)
+        self.feed_forward = tf.keras.Sequential(
+            [tf.keras.layers.Dense(dense_dim, activation="relu"),
+             tf.keras.layers.Dense(embed_dim)]
         )
+
     def call(self, x):
         # Post layer normalization + residual connections
-        x = self.layer_norm_1(x + self.global_self_attention(q=x, k=x, v=x))
+        x = self.layer_norm_1(x + self.global_self_attention([x, x, x]))
         x = self.layer_norm_2(x + self.feed_forward(x))
         return x
 
@@ -133,36 +137,29 @@ class TransformerEncoder(keras.layers.Layer):
 
 # Define the TransformerDecoder class
 @tf.keras.utils.register_keras_serializable()
-class TransformerDecoder(keras.layers.Layer):
+class TransformerDecoder(Layer):
     def __init__(self, embed_dim, dense_dim, num_heads, **kwargs):
         super().__init__(**kwargs)
         self.embed_dim = embed_dim
         self.dense_dim = dense_dim
         self.num_heads = num_heads
-        self.causal_self_attention = MultiHeadAttention(embed_dim=embed_dim, h=num_heads)
-        self.cross_attention = MultiHeadAttention(embed_dim=embed_dim, h=num_heads)
-        self.feed_forward = keras.Sequential(
-            [keras.layers.Dense(dense_dim, activation="relu"),
-             keras.layers.Dense(embed_dim),]
+        self.causal_self_attention = MultiHeadAttention(embed_dim=embed_dim, num_heads=num_heads)
+        self.cross_attention = MultiHeadAttention(embed_dim=embed_dim, num_heads=num_heads)
+        self.feed_forward = tf.keras.Sequential(
+            [tf.keras.layers.Dense(dense_dim, activation="relu"),
+             tf.keras.layers.Dense(embed_dim)]
         )
-        self.layer_norm_1 = keras.layers.LayerNormalization()
-        self.layer_norm_2 = keras.layers.LayerNormalization()
-        self.layer_norm_3 = keras.layers.LayerNormalization()
-    def get_config(self):
-        config = super().get_config()
-        config.update({
-            "embed_dim": self.embed_dim,
-            "dense_dim": self.dense_dim,
-            "num_heads": self.num_heads,
-        })
-        return config
+        self.layer_norm_1 = tf.keras.layers.LayerNormalization()
+        self.layer_norm_2 = tf.keras.layers.LayerNormalization()
+        self.layer_norm_3 = tf.keras.layers.LayerNormalization()
 
     def call(self, x, context):
         # Post layer normalization + residual connections
-        x = self.layer_norm_1(x + self.causal_self_attention(q=x, k=x, v=x, use_causal_mask=True))
-        x = self.layer_norm_2(x + self.cross_attention(q=x, k=context, v=context))
+        x = self.layer_norm_1(x + self.causal_self_attention([x, x, x], use_causal_mask=True))
+        x = self.layer_norm_2(x + self.cross_attention([x, context, context]))
         x = self.layer_norm_3(x + self.feed_forward(x))
         return x
+
     def get_config(self):
         config = super().get_config()
         config.update({
