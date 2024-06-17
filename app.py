@@ -4,6 +4,7 @@ import numpy as np
 import pickle
 import re
 from tensorflow.keras.layers import Layer, Dense
+from transformers import pipeline
 
 # Define custom standardization function
 @tf.keras.utils.register_keras_serializable()
@@ -13,24 +14,26 @@ def custom_standardization(input_string):
 
 # Define the PositionalEmbedding class
 @tf.keras.utils.register_keras_serializable()
-class PositionalEmbedding(Layer):
+class PositionalEmbedding(keras.layers.Layer):
     def __init__(self, sequence_length, input_dim, output_dim, **kwargs):
         super().__init__(**kwargs)
-        self.token_embeddings = tf.keras.layers.Embedding(input_dim=input_dim, output_dim=output_dim)
-        self.position_embeddings = tf.keras.layers.Embedding(input_dim=sequence_length, output_dim=output_dim)
+        self.token_embeddings = keras.layers.Embedding(input_dim=input_dim, output_dim=output_dim) # token embedding layer
+        self.position_embeddings = keras.layers.Embedding(input_dim=sequence_length, output_dim=output_dim) # position embedding layer
         self.sequence_length = sequence_length
         self.input_dim = input_dim
         self.output_dim = output_dim
 
     def call(self, inputs):
-        embedded_tokens = self.token_embeddings(inputs)
+        embedded_tokens = self.token_embeddings(inputs) # embed the tokens
         length = tf.shape(inputs)[-1]
-        positions = tf.range(start=0, limit=length, delta=1)
-        embedded_positions = self.position_embeddings(positions)
-        return embedded_tokens + embedded_positions
+        positions = tf.range(start=0, limit=length, delta=1) # create the positional information
+        embedded_positions = self.position_embeddings(positions) # embed the positions
+        return embedded_tokens + embedded_positions # add the token and position embeddings to create the positional embeddings
+    def compute_mask(self, inputs, mask=None):
+        return keras.ops.not_equal(inputs, 0)
 
     def get_config(self):
-        config = super().get_config()
+        config = super(PositionalEmbedding, self).get_config()
         config.update({
             "input_dim": self.input_dim,
             "output_dim": self.output_dim,
@@ -38,66 +41,57 @@ class PositionalEmbedding(Layer):
         })
         return config
 
-    @classmethod
-    def from_config(cls, config):
-        return cls(**config)
-
 # Define the MultiHeadAttention class
-@tf.keras.utils.register_keras_serializable()
-class MultiHeadAttention(Layer):
-    def __init__(self, embed_dim, num_heads, **kwargs):
+class MultiHeadAttention(keras.layers.Layer):
+    def __init__(self, embed_dim, h, **kwargs):
         super().__init__(**kwargs)
         self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.projection_dim = embed_dim // num_heads
-
-        if embed_dim % num_heads != 0:
-            raise ValueError(f"Embedding dimension {embed_dim} should be divisible by the number of heads {num_heads}")
-
-        self.query_dense = Dense(embed_dim)
-        self.key_dense = Dense(embed_dim)
-        self.value_dense = Dense(embed_dim)
-        self.combine_heads = Dense(embed_dim)
+        self.h = h
+        if embed_dim % h != 0:
+            raise ValueError(
+                f"dimension of the embedding space = {embed_dim} should be divisible by number of heads = {h}"
+            )
+        self.q_linear = keras.layers.Dense(embed_dim)
+        self.k_linear = keras.layers.Dense(embed_dim)
+        self.v_linear = keras.layers.Dense(embed_dim)
+        self.concat_linear = keras.layers.Dense(embed_dim)
 
     def split_heads(self, x, batch_size):
-        x = tf.reshape(x, shape=(batch_size, -1, self.num_heads, self.projection_dim))
+        x = tf.reshape(x, shape=(batch_size, -1, self.h, self.embed_dim // self.h))
         return tf.transpose(x, perm=[0, 2, 1, 3])
-
     def concat_heads(self, x, batch_size):
         x = tf.transpose(x, perm=[0, 2, 1, 3])
         return tf.reshape(x, (batch_size, -1, self.embed_dim))
 
-    def call(self, inputs, use_causal_mask=False):
-        q, k, v = inputs
-        batch_size = tf.shape(q)[0]
-
-        q = self.query_dense(q)
-        k = self.key_dense(k)
-        v = self.value_dense(v)
-
+    def call(self, q, k, v, use_causal_mask=False):
+        batch_size = tf.shape(k)[0]
+        q = self.q_linear(q)
+        k = self.k_linear(k)
+        v = self.v_linear(v)
         q = self.split_heads(q, batch_size)
         k = self.split_heads(k, batch_size)
         v = self.split_heads(v, batch_size)
-
-        attention = self.scaled_dot_product_attention(q, k, v, use_causal_mask)
+        attention = scaled_dot_product_attention(q, k, v, use_causal_mask)
         concat = self.concat_heads(attention, batch_size)
-        output = self.combine_heads(concat)
+        concat = self.concat_linear(concat)
+        return concat
+    def get_config(self):
+        config = super(MultiHeadAttention, self).get_config()
+        config.update({
+            "embed_dim": self.embed_dim,
+            "h": self.h,
+        })
+        return config
 
-        return output
-
-    def scaled_dot_product_attention(self, q, k, v, use_causal_mask):
-        matmul_qk = tf.matmul(q, k, transpose_b=True)
-        dk = tf.cast(tf.shape(k)[-1], tf.float32)
-        scaled_attention_logits = matmul_qk / tf.math.sqrt(dk)
-
-        if use_causal_mask:
-            mask = tf.linalg.band_part(tf.ones_like(scaled_attention_logits), -1, 0)
-            scaled_attention_logits += tf.math.log(mask * 1e-9 + 1e-9)
-
-        attention_weights = tf.nn.softmax(scaled_attention_logits, axis=-1)
-        output = tf.matmul(attention_weights, v)
-
-        return output
+ def scaled_dot_product_attention(q, k, v, use_causal_mask=False):
+    d_k = tf.cast(tf.shape(k)[-1], tf.float32)
+    scores = tf.matmul(q, k, transpose_b=True) # Matmul of Q and K
+    scaled_scores = scores / tf.math.sqrt(d_k) # Scale
+    if use_causal_mask:
+        scaled_scores = mask_attn_weights(scaled_scores) # Mask (opt.)
+    weights = tf.nn.softmax(scaled_scores, axis=-1) # SoftMax
+    output = tf.matmul(weights, v) # Matmul of SoftMax and V
+    return output
 
     def get_config(self):
         config = super().get_config()
@@ -107,34 +101,26 @@ class MultiHeadAttention(Layer):
         })
         return config
 
-# Register the custom layer
-tf.keras.utils.get_custom_objects().update({"MultiHeadAttention": MultiHeadAttention})
-
 # Define the TransformerEncoder class
 @tf.keras.utils.register_keras_serializable()
-class TransformerEncoder(Layer):
+class TransformerEncoder(keras.layers.Layer):
     def __init__(self, embed_dim, dense_dim, num_heads, **kwargs):
-        super(TransformerEncoder, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.embed_dim = embed_dim
         self.dense_dim = dense_dim
         self.num_heads = num_heads
-        self.mha = MultiHeadAttention(embed_dim, num_heads)
-        self.ffn = tf.keras.Sequential([
-            tf.keras.layers.Dense(dense_dim, activation="relu"),
-            tf.keras.layers.Dense(embed_dim),
-        ])
-        self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        self.dropout1 = tf.keras.layers.Dropout(0.1)
-        self.dropout2 = tf.keras.layers.Dropout(0.1)
-
-    def call(self, inputs, training=False):
-        attn_output = self.mha([inputs, inputs, inputs])
-        attn_output = self.dropout1(attn_output, training=training)
-        out1 = self.layernorm1(inputs + attn_output)
-        ffn_output = self.ffn(out1)
-        ffn_output = self.dropout2(ffn_output, training=training)
-        return self.layernorm2(out1 + ffn_output)
+        self.layer_norm_1 = keras.layers.LayerNormalization()
+        self.layer_norm_2 = keras.layers.LayerNormalization()
+        self.global_self_attention = MultiHeadAttention(embed_dim=embed_dim, h=num_heads)
+        self.feed_forward = keras.Sequential(
+            [keras.layers.Dense(dense_dim, activation="relu"),
+             keras.layers.Dense(embed_dim),]
+        )
+    def call(self, x):
+        # Post layer normalization + residual connections
+        x = self.layer_norm_1(x + self.global_self_attention(q=x, k=x, v=x))
+        x = self.layer_norm_2(x + self.feed_forward(x))
+        return x
 
     def get_config(self):
         config = super().get_config()
@@ -147,38 +133,36 @@ class TransformerEncoder(Layer):
 
 # Define the TransformerDecoder class
 @tf.keras.utils.register_keras_serializable()
-class TransformerDecoder(Layer):
+class TransformerDecoder(keras.layers.Layer):
     def __init__(self, embed_dim, dense_dim, num_heads, **kwargs):
-        super(TransformerDecoder, self).__init__(**kwargs)
+        super().__init__(**kwargs)
         self.embed_dim = embed_dim
         self.dense_dim = dense_dim
         self.num_heads = num_heads
-        self.mha1 = MultiHeadAttention(embed_dim, num_heads)
-        self.mha2 = MultiHeadAttention(embed_dim, num_heads)
-        self.ffn = tf.keras.Sequential([
-            tf.keras.layers.Dense(dense_dim, activation="relu"),
-            tf.keras.layers.Dense(embed_dim),
-        ])
-        self.layernorm1 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        self.layernorm2 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        self.layernorm3 = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        self.dropout1 = tf.keras.layers.Dropout(0.1)
-        self.dropout2 = tf.keras.layers.Dropout(0.1)
-        self.dropout3 = tf.keras.layers.Dropout(0.1)
+        self.causal_self_attention = MultiHeadAttention(embed_dim=embed_dim, h=num_heads)
+        self.cross_attention = MultiHeadAttention(embed_dim=embed_dim, h=num_heads)
+        self.feed_forward = keras.Sequential(
+            [keras.layers.Dense(dense_dim, activation="relu"),
+             keras.layers.Dense(embed_dim),]
+        )
+        self.layer_norm_1 = keras.layers.LayerNormalization()
+        self.layer_norm_2 = keras.layers.LayerNormalization()
+        self.layer_norm_3 = keras.layers.LayerNormalization()
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "embed_dim": self.embed_dim,
+            "dense_dim": self.dense_dim,
+            "num_heads": self.num_heads,
+        })
+        return config
 
-    def call(self, inputs, enc_output, training=False):
-        attn1 = self.mha1([inputs, inputs, inputs])
-        attn1 = self.dropout1(attn1, training=training)
-        out1 = self.layernorm1(inputs + attn1)
-
-        attn2 = self.mha2([out1, enc_output, enc_output])
-        attn2 = self.dropout2(attn2, training=training)
-        out2 = self.layernorm2(out1 + attn2)
-
-        ffn_output = self.ffn(out2)
-        ffn_output = self.dropout3(ffn_output, training=training)
-        return self.layernorm3(out2 + ffn_output)
-
+    def call(self, x, context):
+        # Post layer normalization + residual connections
+        x = self.layer_norm_1(x + self.causal_self_attention(q=x, k=x, v=x, use_causal_mask=True))
+        x = self.layer_norm_2(x + self.cross_attention(q=x, k=context, v=context))
+        x = self.layer_norm_3(x + self.feed_forward(x))
+        return x
     def get_config(self):
         config = super().get_config()
         config.update({
@@ -196,7 +180,10 @@ with open('target_vectorization.pkl', 'rb') as f:
     target_vectorization = pickle.load(f)
 
 # Load the model architecture and weights
-transformer = tf.keras.models.load_model('transformer_model.h5', custom_objects={
+with open('transformer_model_architecture.json', 'r') as f:
+    model_json = f.read()
+
+transformer = tf.keras.models.model_from_json(model_json, custom_objects={
     'PositionalEmbedding': PositionalEmbedding,
     'custom_standardization': custom_standardization,
     'MultiHeadAttention': MultiHeadAttention,
@@ -204,11 +191,11 @@ transformer = tf.keras.models.load_model('transformer_model.h5', custom_objects=
     'TransformerDecoder': TransformerDecoder
 })
 
-# Define max decoded sentence length
-max_decoded_sentence_length = 30
+transformer.load_weights('transformer_model.h5')
 
 # Create target index lookup from target_vectorization
 target_index_lookup = {i: token for i, token in enumerate(target_vectorization.get_vocabulary())}
+max_decoded_sentence_length = 30
 
 # Function to decode sequence using Transformer model
 def decode_sequence(input_sentence):
@@ -227,13 +214,18 @@ def decode_sequence(input_sentence):
     decoded_sentence = decoded_sentence.replace("[start]", "").replace("[end]", "").strip()
     return decoded_sentence
 
-# Streamlit UI
-st.title('English to German Translation')
+# Initialize sentiment analysis pipeline for German language
+sentiment_pipeline = pipeline("sentiment-analysis", model="oliverguhr/german-sentiment-bert")
 
-input_text = st.text_input('Enter English sentence:')
-if st.button('Translate'):
+# Streamlit UI
+st.title('English to German Translation and Sentiment Analysis')
+
+input_text = st.text_input('Enter an English sentence:')
+if st.button('Translate and Analyze Sentiment'):
     if input_text:
         translated_sentence = decode_sequence(input_text)
+        sentiment = sentiment_pipeline(translated_sentence)
         st.success(f'Translated German sentence: {translated_sentence}')
+        st.info(f'Sentiment: {sentiment}')
     else:
         st.warning('Please enter an English sentence to translate.')
