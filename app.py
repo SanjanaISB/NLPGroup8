@@ -1,26 +1,21 @@
 import streamlit as st
-import numpy as np
 import tensorflow as tf
-from transformers import pipeline
 from tensorflow import keras
+import numpy as np
 import pickle
-from custom_layers import PositionalEmbedding, MultiHeadAttention, TransformerEncoder, TransformerDecoder
 
-# Load the saved Transformer model
-transformer = keras.models.load_model('transformer_model.h5', custom_objects={
-    'PositionalEmbedding': PositionalEmbedding,
-    'MultiHeadAttention': MultiHeadAttention,
-    'TransformerEncoder': TransformerEncoder,
-    'TransformerDecoder': TransformerDecoder
-})
+# Load the trained Transformer model
+model_path = 'transformer_model.h5'
+transformer = keras.models.load_model(model_path, custom_objects={"PositionalEmbedding": PositionalEmbedding, "MultiHeadAttention": MultiHeadAttention, "TransformerEncoder": TransformerEncoder, "TransformerDecoder": TransformerDecoder})
 
-# Load the vectorization layers
+# Load the vectorization configurations
 with open('source_vectorization.pkl', 'rb') as f:
     source_vectorization = pickle.load(f)
 
 with open('target_vectorization.pkl', 'rb') as f:
     target_vectorization = pickle.load(f)
 
+# Define decode function
 target_vocab = target_vectorization.get_vocabulary()
 target_index_lookup = dict(zip(range(len(target_vocab)), target_vocab))
 max_decoded_sentence_length = 30
@@ -36,22 +31,21 @@ def decode_sequence(input_sentence):
         decoded_sentence += " " + sampled_token
         if sampled_token == "[end]":
             break
+
     decoded_sentence = decoded_sentence.replace("[start]", "").replace("[end]", "").strip()
     return decoded_sentence
 
-# Initialize sentiment analysis pipeline for German language
-sentiment_pipeline = pipeline("sentiment-analysis", model="oliverguhr/german-sentiment-bert")
+# Streamlit app layout
+st.title("English to German Translator")
 
-# Streamlit app
-st.title("English to German Translation and Sentiment Analysis")
-st.write("Enter an English sentence and get its German translation along with sentiment analysis.")
+st.write("Enter an English sentence and click 'Translate' to get the German translation.")
 
-input_sentence = st.text_input("Enter English sentence:")
-if st.button("Translate and Analyze"):
+input_sentence = st.text_input("English Sentence")
+
+if st.button("Translate"):
     if input_sentence:
         translated_sentence = decode_sequence(input_sentence)
-        sentiment = sentiment_pipeline(translated_sentence)
-        st.write("**German Translation:**", translated_sentence)
-        st.write("**Sentiment Analysis:**", sentiment)
+        st.write("**German Translation:**")
+        st.write(translated_sentence)
     else:
-        st.write("Please enter a sentence.")
+        st.write("Please enter an English sentence.")
