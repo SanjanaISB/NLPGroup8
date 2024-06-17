@@ -191,7 +191,7 @@ transformer = model_from_json(model_json, custom_objects={
     'TransformerDecoder': TransformerDecoder
 })
 
-transformer.load_weights('transformer_model_weights.h5')
+transformer.load_weights('transformer_model.h5')
 
 # Define max decoded sentence length
 max_decoded_sentence_length = 30
