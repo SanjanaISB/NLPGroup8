@@ -3,7 +3,6 @@ import tensorflow as tf
 import numpy as np
 import pickle
 import re
-import keras
 from tensorflow.keras.layers import Layer, Dense
 
 # Define custom standardization function
@@ -14,75 +13,77 @@ def custom_standardization(input_string):
 
 # Define the PositionalEmbedding class
 @tf.keras.utils.register_keras_serializable()
-class PositionalEmbedding(keras.layers.Layer):
+class PositionalEmbedding(Layer):
     def __init__(self, sequence_length, input_dim, output_dim, **kwargs):
         super().__init__(**kwargs)
-        self.token_embeddings = keras.layers.Embedding(input_dim=input_dim, output_dim=output_dim) # token embedding layer
-        self.position_embeddings = keras.layers.Embedding(input_dim=sequence_length, output_dim=output_dim) # position embedding layer
+        self.token_embeddings = tf.keras.layers.Embedding(input_dim=input_dim, output_dim=output_dim)
+        self.position_embeddings = tf.keras.layers.Embedding(input_dim=sequence_length, output_dim=output_dim)
         self.sequence_length = sequence_length
         self.input_dim = input_dim
         self.output_dim = output_dim
 
     def call(self, inputs):
-        embedded_tokens = self.token_embeddings(inputs) # embed the tokens
+        embedded_tokens = self.token_embeddings(inputs)
         length = tf.shape(inputs)[-1]
-        positions = tf.range(start=0, limit=length, delta=1) # create the positional information
-        embedded_positions = self.position_embeddings(positions) # embed the positions
-        return embedded_tokens + embedded_positions # add the token and position embeddings to create the positional embeddings
-    def compute_mask(self, inputs, mask=None):
-        return keras.ops.not_equal(inputs, 0)
+        positions = tf.range(start=0, limit=length, delta=1)
+        embedded_positions = self.position_embeddings(positions)
+        return embedded_tokens + embedded_positions
 
     def get_config(self):
-        config = super(PositionalEmbedding, self).get_config()
+        config = super().get_config()
         config.update({
             "input_dim": self.input_dim,
             "output_dim": self.output_dim,
             "sequence_length": self.sequence_length,
         })
         return config
-# display a random sample before and after embbeding just to test our class
 
-embed_dim = 256
-class MultiHeadAttention(keras.layers.Layer):
-    def __init__(self, embed_dim, h, **kwargs):
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+# Define the MultiHeadAttention class
+@tf.keras.utils.register_keras_serializable()
+class MultiHeadAttention(Layer):
+    def __init__(self, embed_dim, num_heads, **kwargs):
         super().__init__(**kwargs)
         self.embed_dim = embed_dim
-        self.h = h
-        if embed_dim % h != 0:
-            raise ValueError(
-                f"dimension of the embedding space = {embed_dim} should be divisible by number of heads = {h}"
-            )
-        self.q_linear = keras.layers.Dense(embed_dim)
-        self.k_linear = keras.layers.Dense(embed_dim)
-        self.v_linear = keras.layers.Dense(embed_dim)
-        self.concat_linear = keras.layers.Dense(embed_dim)
+        self.num_heads = num_heads
+        self.projection_dim = embed_dim // num_heads
+
+        if embed_dim % num_heads != 0:
+            raise ValueError(f"Embedding dimension {embed_dim} should be divisible by the number of heads {num_heads}")
+
+        self.query_dense = Dense(embed_dim)
+        self.key_dense = Dense(embed_dim)
+        self.value_dense = Dense(embed_dim)
+        self.combine_heads = Dense(embed_dim)
 
     def split_heads(self, x, batch_size):
-        x = tf.reshape(x, shape=(batch_size, -1, self.h, self.embed_dim // self.h))
+        x = tf.reshape(x, shape=(batch_size, -1, self.num_heads, self.projection_dim))
         return tf.transpose(x, perm=[0, 2, 1, 3])
+
     def concat_heads(self, x, batch_size):
         x = tf.transpose(x, perm=[0, 2, 1, 3])
         return tf.reshape(x, (batch_size, -1, self.embed_dim))
 
-    def call(self, q, k, v, use_causal_mask=False):
-        batch_size = tf.shape(k)[0]
-        q = self.q_linear(q)
-        k = self.k_linear(k)
-        v = self.v_linear(v)
+    def call(self, inputs, use_causal_mask=False):
+        q, k, v = inputs
+        batch_size = tf.shape(q)[0]
+
+        q = self.query_dense(q)
+        k = self.key_dense(k)
+        v = self.value_dense(v)
+
         q = self.split_heads(q, batch_size)
         k = self.split_heads(k, batch_size)
         v = self.split_heads(v, batch_size)
-        attention = scaled_dot_product_attention(q, k, v, use_causal_mask)
+
+        attention = self.scaled_dot_product_attention(q, k, v, use_causal_mask)
         concat = self.concat_heads(attention, batch_size)
-        concat = self.concat_linear(concat)
-        return concat
-    def get_config(self):
-        config = super(MultiHeadAttention, self).get_config()
-        config.update({
-            "embed_dim": self.embed_dim,
-            "h": self.h,
-        })
-        return config
+        output = self.combine_heads(concat)
+
+        return output
 
     def scaled_dot_product_attention(self, q, k, v, use_causal_mask):
         matmul_qk = tf.matmul(q, k, transpose_b=True)
@@ -195,18 +196,13 @@ with open('target_vectorization.pkl', 'rb') as f:
     target_vectorization = pickle.load(f)
 
 # Load the model architecture and weights
-with open('transformer_model_architecture.json', 'r') as f:
-    model_json = f.read()
-
-transformer = tf.keras.models.model_from_json(model_json, custom_objects={
+transformer = tf.keras.models.load_model('transformer_model.h5', custom_objects={
     'PositionalEmbedding': PositionalEmbedding,
     'custom_standardization': custom_standardization,
     'MultiHeadAttention': MultiHeadAttention,
     'TransformerEncoder': TransformerEncoder,
     'TransformerDecoder': TransformerDecoder
 })
-
-transformer.load_weights('transformer_model.h5')
 
 # Define max decoded sentence length
 max_decoded_sentence_length = 30
