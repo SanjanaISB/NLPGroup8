@@ -1,5 +1,3 @@
-# custom_layers.py
-
 import tensorflow as tf
 from tensorflow import keras
 
@@ -12,7 +10,7 @@ class PositionalEmbedding(keras.layers.Layer):
         self.input_dim = input_dim
         self.output_dim = output_dim
 
-    def call(self, inputs):
+    def call(self, inputs, training=None):
         embedded_tokens = self.token_embeddings(inputs)
         length = tf.shape(inputs)[-1]
         positions = tf.range(start=0, limit=length, delta=1)
@@ -46,7 +44,7 @@ class MultiHeadAttention(keras.layers.Layer):
         x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
         return tf.transpose(x, perm=[0, 2, 1, 3])
 
-    def call(self, q, k, v, mask=None):
+    def call(self, q, k, v, mask=None, training=None):
         batch_size = tf.shape(q)[0]
         q = self.split_heads(self.wq(q), batch_size)
         k = self.split_heads(self.wk(k), batch_size)
@@ -93,7 +91,7 @@ class TransformerEncoder(keras.layers.Layer):
         self.dropout2 = keras.layers.Dropout(0.1)
 
     def call(self, x, training, mask=None):
-        attn_output = self.mha(x, x, x, mask)
+        attn_output = self.mha(x, x, x, mask, training=training)
         attn_output = self.dropout1(attn_output, training=training)
         out1 = self.layernorm1(x + attn_output)
         ffn_output = self.ffn(out1)
@@ -129,11 +127,11 @@ class TransformerDecoder(keras.layers.Layer):
         self.dropout3 = keras.layers.Dropout(0.1)
 
     def call(self, x, enc_output, training, look_ahead_mask=None, padding_mask=None):
-        attn1 = self.mha1(x, x, x, look_ahead_mask)
+        attn1 = self.mha1(x, x, x, look_ahead_mask, training=training)
         attn1 = self.dropout1(attn1, training=training)
         out1 = self.layernorm1(x + attn1)
 
-        attn2 = self.mha2(out1, enc_output, enc_output, padding_mask)
+        attn2 = self.mha2(out1, enc_output, enc_output, padding_mask, training=training)
         attn2 = self.dropout2(attn2, training=training)
         out2 = self.layernorm2(out1 + attn2)
 
