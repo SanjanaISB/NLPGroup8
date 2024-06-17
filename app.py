@@ -1,10 +1,9 @@
-import streamlit as st
 import tensorflow as tf
 from tensorflow import keras
 import numpy as np
+import streamlit as st
 import pickle
 
-# Define custom layers
 class PositionalEmbedding(keras.layers.Layer):
     def __init__(self, sequence_length, input_dim, output_dim, **kwargs):
         super().__init__(**kwargs)
@@ -22,7 +21,7 @@ class PositionalEmbedding(keras.layers.Layer):
         return embedded_tokens + embedded_positions
 
     def compute_mask(self, inputs, mask=None):
-        return tf.not_equal(inputs, 0)
+        return tf.cast(tf.not_equal(inputs, 0), dtype=tf.float32)
 
     def get_config(self):
         config = super().get_config()
@@ -202,4 +201,3 @@ if st.button("Translate"):
         st.write(translated_sentence)
     else:
         st.write("Please enter an English sentence.")
-
