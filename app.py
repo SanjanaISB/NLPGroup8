@@ -16,6 +16,9 @@ transformer = tf.keras.models.load_model('transformer_model.h5')
 # Define max decoded sentence length
 max_decoded_sentence_length = 30
 
+# Create target index lookup from target_vectorization
+target_index_lookup = {v: k for k, v in target_vectorization.get_vocabulary().items()}
+
 # Function to decode sequence using Transformer model
 def decode_sequence(input_sentence):
     tokenized_input_sentence = source_vectorization([input_sentence])
@@ -24,7 +27,7 @@ def decode_sequence(input_sentence):
         tokenized_target_sentence = target_vectorization([decoded_sentence])[:, :-1]
         predictions = transformer([tokenized_input_sentence, tokenized_target_sentence])
         sampled_token_index = np.argmax(predictions[0, i, :])
-        sampled_token = target_index_lookup[sampled_token_index]
+        sampled_token = target_index_lookup.get(sampled_token_index, '[unk]')
         decoded_sentence += " " + sampled_token
         if sampled_token == "[end]":
             break
