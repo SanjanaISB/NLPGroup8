@@ -1,11 +1,26 @@
 import os
 import tensorflow as tf
 from tensorflow import keras
+from tensorflow.keras.layers import Layer
 import pickle
 import numpy as np
 import streamlit as st
 from transformers import pipeline
 import gdown
+
+# Define the custom layer PositionalEmbedding
+class PositionalEmbedding(Layer):
+    def __init__(self, vocab_size, d_model):
+        super(PositionalEmbedding, self).__init__()
+        self.token_emb = keras.layers.Embedding(input_dim=vocab_size, output_dim=d_model)
+        self.pos_emb = keras.layers.Embedding(input_dim=2048, output_dim=d_model)
+
+    def call(self, x):
+        maxlen = tf.shape(x)[-1]
+        positions = tf.range(start=0, limit=maxlen, delta=1)
+        positions = self.pos_emb(positions)
+        x = self.token_emb(x)
+        return x + positions
 
 # Ensure the model files are in the correct path
 MODEL_URL = 'https://drive.google.com/uc?export=download&id=18PvjVRNcJ50CqUKJ-sNILVovIa5vJUj3'
@@ -21,8 +36,9 @@ MODEL_PATH = 'transformer_model.h5'
 if not os.path.exists(MODEL_PATH):
     download_model(MODEL_URL, MODEL_PATH)
 
-# Load the trained model
-transformer = keras.models.load_model(MODEL_PATH)
+# Load the trained model with custom object scope
+with keras.utils.custom_object_scope({'PositionalEmbedding': PositionalEmbedding}):
+    transformer = keras.models.load_model(MODEL_PATH)
 
 # Load the vectorization files
 with open(SOURCE_VECTORIZATION_PATH, 'rb') as f:
