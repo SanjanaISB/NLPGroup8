@@ -5,18 +5,16 @@ import pickle
 import numpy as np
 import streamlit as st
 from transformers import pipeline
-import requests
+import gdown
 
 # Ensure the model files are in the correct path
 MODEL_URL = 'https://drive.google.com/uc?export=download&id=18PvjVRNcJ50CqUKJ-sNILVovIa5vJUj3'
 SOURCE_VECTORIZATION_PATH = 'source_vectorization.pkl'
 TARGET_VECTORIZATION_PATH = 'target_vectorization.pkl'
 
-# Function to download the model file
+# Function to download the model file using gdown
 def download_model(url, filename):
-    response = requests.get(url)
-    with open(filename, 'wb') as f:
-        f.write(response.content)
+    gdown.download(url, filename, quiet=False)
 
 # Download the model
 MODEL_PATH = 'transformer_model.h5'
