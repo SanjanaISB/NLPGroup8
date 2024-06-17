@@ -10,8 +10,10 @@ import gdown
 
 # Define the custom layer PositionalEmbedding
 class PositionalEmbedding(Layer):
-    def __init__(self, vocab_size, d_model):
-        super(PositionalEmbedding, self).__init__()
+    def __init__(self, vocab_size, d_model, **kwargs):
+        super(PositionalEmbedding, self).__init__(**kwargs)
+        self.vocab_size = vocab_size
+        self.d_model = d_model
         self.token_emb = keras.layers.Embedding(input_dim=vocab_size, output_dim=d_model)
         self.pos_emb = keras.layers.Embedding(input_dim=2048, output_dim=d_model)
 
@@ -21,6 +23,14 @@ class PositionalEmbedding(Layer):
         positions = self.pos_emb(positions)
         x = self.token_emb(x)
         return x + positions
+
+    def get_config(self):
+        config = super(PositionalEmbedding, self).get_config()
+        config.update({
+            "vocab_size": self.vocab_size,
+            "d_model": self.d_model,
+        })
+        return config
 
 # Ensure the model files are in the correct path
 MODEL_URL = 'https://drive.google.com/uc?export=download&id=18PvjVRNcJ50CqUKJ-sNILVovIa5vJUj3'
