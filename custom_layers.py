@@ -20,7 +20,8 @@ class PositionalEmbedding(keras.layers.Layer):
         return embedded_tokens + embedded_positions
 
     def compute_mask(self, inputs, mask=None):
-        return tf.cast(tf.not_equal(inputs, 0), dtype=tf.float32)
+        mask = tf.not_equal(inputs, 0)
+        return tf.cast(mask, dtype=tf.float32)
 
     def get_config(self):
         config = super().get_config()
@@ -148,4 +149,4 @@ class TransformerDecoder(keras.layers.Layer):
             "dense_dim": self.dense_dim,
             "num_heads": self.num_heads,
         })
-        return config
+        return
