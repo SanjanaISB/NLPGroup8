@@ -19,7 +19,7 @@ class PositionalEmbedding(keras.layers.Layer):
         embedded_positions = self.position_embeddings(positions)
         return embedded_tokens + embedded_positions
 
-   def compute_mask(self, inputs, mask=None):
+    def compute_mask(self, inputs, mask=None):
         return tf.keras.backend.not_equal(inputs, 0)
 
     def get_config(self):
