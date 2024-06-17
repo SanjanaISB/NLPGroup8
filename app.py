@@ -1,5 +1,9 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
+import streamlit as st
+import numpy as np
+import pickle
+import re
 
 @tf.keras.utils.register_keras_serializable()
 class PositionalEmbedding(Layer):
@@ -31,23 +35,18 @@ class PositionalEmbedding(Layer):
     def from_config(cls, config):
         return cls(**config)
 
-# Register the custom standardization function
+# Define and register the custom standardization function
 @tf.keras.utils.register_keras_serializable()
 def custom_standardization(input_string):
     lowercase = tf.strings.lower(input_string)
     return tf.strings.regex_replace(lowercase, '[%s]' % re.escape('!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n'), '')
 
-# Load the model with custom objects
+# Function to load the model with custom objects
 def load_model(filepath):
     return tf.keras.models.load_model(filepath, custom_objects={
         'PositionalEmbedding': PositionalEmbedding,
         'custom_standardization': custom_standardization
     })
-
-# Streamlit app code
-import streamlit as st
-import numpy as np
-import pickle
 
 # Load vectorization objects
 with open('source_vectorization.pkl', 'rb') as f:
