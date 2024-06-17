@@ -5,11 +5,23 @@ import pickle
 import numpy as np
 import streamlit as st
 from transformers import pipeline
+import requests
 
 # Ensure the model files are in the correct path
-MODEL_PATH = 'transformer_model.h5'
+MODEL_URL = 'https://media.githubusercontent.com/media/VADSGroup16/NLPGroup8/main/transformer_model.h5'
 SOURCE_VECTORIZATION_PATH = 'source_vectorization.pkl'
 TARGET_VECTORIZATION_PATH = 'target_vectorization.pkl'
+
+# Function to download the model file
+def download_model(url, filename):
+    response = requests.get(url)
+    with open(filename, 'wb') as f:
+        f.write(response.content)
+
+# Download the model
+MODEL_PATH = 'transformer_model.h5'
+if not os.path.exists(MODEL_PATH):
+    download_model(MODEL_URL, MODEL_PATH)
 
 # Load the trained model
 transformer = keras.models.load_model(MODEL_PATH)
