@@ -112,7 +112,7 @@ class TransformerEncoder(Layer):
         self.dropout1 = tf.keras.layers.Dropout(0.1)
         self.dropout2 = tf.keras.layers.Dropout(0.1)
 
-    def call(self, inputs, training):
+    def call(self, inputs, training=False):
         attn_output = self.mha([inputs, inputs, inputs])
         attn_output = self.dropout1(attn_output, training=training)
         out1 = self.layernorm1(inputs + attn_output)
@@ -150,12 +150,12 @@ class TransformerDecoder(Layer):
         self.dropout2 = tf.keras.layers.Dropout(0.1)
         self.dropout3 = tf.keras.layers.Dropout(0.1)
 
-    def call(self, inputs, enc_output, training):
-        attn1, attn_weights_block1 = self.mha1(inputs, inputs, inputs)
+    def call(self, inputs, enc_output, training=False):
+        attn1 = self.mha1([inputs, inputs, inputs])
         attn1 = self.dropout1(attn1, training=training)
         out1 = self.layernorm1(inputs + attn1)
 
-        attn2, attn_weights_block2 = self.mha2(out1, enc_output, enc_output)
+        attn2 = self.mha2([out1, enc_output, enc_output])
         attn2 = self.dropout2(attn2, training=training)
         out2 = self.layernorm2(out1 + attn2)
 
@@ -204,7 +204,7 @@ def decode_sequence(input_sentence):
     decoded_sentence = "[start]"
     for i in range(max_decoded_sentence_length):
         tokenized_target_sentence = target_vectorization([decoded_sentence])[:, :-1]
-        predictions = transformer([tokenized_input_sentence, tokenized_target_sentence])
+        predictions = transformer([tokenized_input_sentence, tokenized_target_sentence], training=False)
         sampled_token_index = np.argmax(predictions[0, i, :])
         sampled_token = target_index_lookup[sampled_token_index]
         decoded_sentence += " " + sampled_token
