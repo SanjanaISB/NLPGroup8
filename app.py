@@ -1,36 +1,45 @@
 import streamlit as st
 import tensorflow as tf
-from tensorflow.keras.models import load_model
+import numpy as np
+import pickle
 
-# Import custom layers
-from custom_layers import PositionalEmbedding, MultiHeadAttention, TransformerEncoder, TransformerDecoder
+# Load vectorization objects
+with open('source_vectorization.pkl', 'rb') as f:
+    source_vectorization = pickle.load(f)
 
-# Define the custom objects
-custom_objects = {
-    "PositionalEmbedding": PositionalEmbedding,
-    "MultiHeadAttention": MultiHeadAttention,
-    "TransformerEncoder": TransformerEncoder,
-    "TransformerDecoder": TransformerDecoder,
-}
+with open('target_vectorization.pkl', 'rb') as f:
+    target_vectorization = pickle.load(f)
 
-# Load the model
-model_path = 'transformer_model.h5'
-transformer = load_model(model_path, custom_objects=custom_objects)
+# Load Transformer model
+transformer = tf.keras.models.load_model('transformer_model.h5')
 
-# Streamlit app interface
-st.title("English to German Translation")
+# Define max decoded sentence length
+max_decoded_sentence_length = 30
 
-# Input text box
-input_text = st.text_input("Enter text in English:")
+# Function to decode sequence using Transformer model
+def decode_sequence(input_sentence):
+    tokenized_input_sentence = source_vectorization([input_sentence])
+    decoded_sentence = "[start]"
+    for i in range(max_decoded_sentence_length):
+        tokenized_target_sentence = target_vectorization([decoded_sentence])[:, :-1]
+        predictions = transformer([tokenized_input_sentence, tokenized_target_sentence])
+        sampled_token_index = np.argmax(predictions[0, i, :])
+        sampled_token = target_index_lookup[sampled_token_index]
+        decoded_sentence += " " + sampled_token
+        if sampled_token == "[end]":
+            break
 
-# Translate button
-if st.button("Translate"):
-    # Perform translation using the loaded model
-    # Placeholder for actual translation logic
-    # Assuming the model expects a specific input format
-    # You may need to preprocess the input_text into a format suitable for your model
-    # For example, tokenization and padding
-    # translated_text = transformer.predict(preprocessed_input_text)
-    # For the sake of example, let's use a dummy translation
-    translated_text = "Dies ist eine Übersetzung."  # Replace this with the actual model prediction logic
-    st.write(f"Translation: {translated_text}")
+    # Remove [start] and [end] tokens
+    decoded_sentence = decoded_sentence.replace("[start]", "").replace("[end]", "").strip()
+    return decoded_sentence
+
+# Streamlit UI
+st.title('English to German Translation')
+
+input_text = st.text_input('Enter English sentence:')
+if st.button('Translate'):
+    if input_text:
+        translated_sentence = decode_sequence(input_text)
+        st.success(f'Translated German sentence: {translated_sentence}')
+    else:
+        st.warning('Please enter an English sentence to translate.')
