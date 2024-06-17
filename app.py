@@ -3,6 +3,8 @@ import tensorflow as tf
 import numpy as np
 import pickle
 
+!pip install --upgrade tensorflow
+
 import tensorflow as tf
 from tensorflow.keras.layers.preprocessing import TextVectorization
 from tensorflow.keras.utils import register_keras_serializable
