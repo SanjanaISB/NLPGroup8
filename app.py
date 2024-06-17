@@ -6,18 +6,22 @@ import numpy as np
 import streamlit as st
 from transformers import pipeline
 
+# Ensure the model files are in the correct path
+MODEL_PATH = 'transformer_model.h5'
+SOURCE_VECTORIZATION_PATH = 'source_vectorization.pkl'
+TARGET_VECTORIZATION_PATH = 'target_vectorization.pkl'
+
 # Load the trained model
-with open('transformer_model_architecture.json', 'r') as f:
-    transformer = keras.models.model_from_json(f.read())
-transformer.load_weights('transformer_model.h5')
+transformer = keras.models.load_model(MODEL_PATH)
 
 # Load the vectorization files
-with open('source_vectorization.pkl', 'rb') as f:
+with open(SOURCE_VECTORIZATION_PATH, 'rb') as f:
     source_vectorization = pickle.load(f)
 
-with open('target_vectorization.pkl', 'rb') as f:
+with open(TARGET_VECTORIZATION_PATH, 'rb') as f:
     target_vectorization = pickle.load(f)
 
+# Define vocabulary and decoding parameters
 target_vocab = target_vectorization.get_vocabulary()
 target_index_lookup = dict(zip(range(len(target_vocab)), target_vocab))
 max_decoded_sentence_length = 30
@@ -38,17 +42,20 @@ def decode_sequence(input_sentence):
     decoded_sentence = decoded_sentence.replace("[start]", "").replace("[end]", "").strip()
     return decoded_sentence
 
-# Initialize sentiment analysis pipeline for German language
+# Initialize sentiment analysis pipeline for the German language
 sentiment_pipeline = pipeline("sentiment-analysis", model="oliverguhr/german-sentiment-bert")
 
+# Streamlit app interface
 st.title("English to German Translation and Sentiment Analysis")
 st.write("Enter an English sentence and get its German translation along with sentiment analysis.")
 
 input_sentence = st.text_input("English Sentence:")
 
 if st.button("Translate"):
-    translated_sentence = decode_sequence(input_sentence)
-    st.write("**German Translation:**", translated_sentence)
-    sentiment = sentiment_pipeline(translated_sentence)
-    st.write("**Sentiment Analysis:**", sentiment)
-
+    if input_sentence:
+        translated_sentence = decode_sequence(input_sentence)
+        st.write("**German Translation:**", translated_sentence)
+        sentiment = sentiment_pipeline(translated_sentence)
+        st.write("**Sentiment Analysis:**", sentiment)
+    else:
+        st.write("Please enter an English sentence.")
