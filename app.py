@@ -1,6 +1,17 @@
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
+import streamlit as st
+import numpy as np
+import pickle
+import re
 
+# Define and register the custom standardization function
+@tf.keras.utils.register_keras_serializable()
+def custom_standardization(input_string):
+    lowercase = tf.strings.lower(input_string)
+    return tf.strings.regex_replace(lowercase, '[%s]' % re.escape('!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n'), '')
+
+# Define and register the custom PositionalEmbedding layer
 @tf.keras.utils.register_keras_serializable()
 class PositionalEmbedding(Layer):
     def __init__(self, sequence_length, vocab_size, embed_dim, **kwargs):
@@ -27,29 +38,6 @@ class PositionalEmbedding(Layer):
         })
         return config
 
-import streamlit as st
-import tensorflow as tf
-import numpy as np
-import pickle
-
-# Register custom standardization function
-def custom_standardization(input_string):
-    lowercase = tf.strings.lower(input_string)
-    return tf.strings.regex_replace(lowercase, '[%s]' % re.escape('!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n'), '')
-
-@tf.keras.utils.register_keras_serializable()
-def custom_standardization(input_string):
-    lowercase = tf.strings.lower(input_string)
-    return tf.strings.regex_replace(lowercase, '[%s]' % re.escape('!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n'), '')
-
-# Register custom positional embedding layer
-@tf.keras.utils.custom_object_scope({'PositionalEmbedding': PositionalEmbedding})
-def load_model(filepath):
-    return tf.keras.models.load_model(filepath, custom_objects={
-        'PositionalEmbedding': PositionalEmbedding,
-        'custom_standardization': custom_standardization
-    })
-
 # Load vectorization objects
 with open('source_vectorization.pkl', 'rb') as f:
     source_vectorization = pickle.load(f)
@@ -57,7 +45,14 @@ with open('source_vectorization.pkl', 'rb') as f:
 with open('target_vectorization.pkl', 'rb') as f:
     target_vectorization = pickle.load(f)
 
-# Load Transformer model
+# Load Transformer model with custom objects
+def load_model(filepath):
+    return tf.keras.models.load_model(filepath, custom_objects={
+        'PositionalEmbedding': PositionalEmbedding,
+        'custom_standardization': custom_standardization
+    })
+
+# Load the transformer model
 transformer = load_model('transformer_model.h5')
 
 # Define max decoded sentence length
