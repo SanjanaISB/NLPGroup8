@@ -2,10 +2,10 @@ import streamlit as st
 import requests
 
 # Set the title of the Streamlit app
-st.title("German to English Translation")
+st.title("English to German Translation")
 
 # Text input for the German sentence
-german_sentence = st.text_input("Enter a German sentence:")
+german_sentence = st.text_input("Enter a English sentence:")
 
 if st.button("Translate"):
     if german_sentence:
