@@ -53,15 +53,24 @@ if not os.path.exists(MODEL_PATH):
     download_model(MODEL_URL, MODEL_PATH)
 
 # Load the trained model with custom object scope
-with keras.utils.custom_object_scope({'PositionalEmbedding': PositionalEmbedding}):
-    transformer = keras.models.load_model(MODEL_PATH)
+try:
+    with keras.utils.custom_object_scope({'PositionalEmbedding': PositionalEmbedding}):
+        transformer = keras.models.load_model(MODEL_PATH)
+except Exception as e:
+    st.error(f"Error loading the model: {e}")
 
 # Load the vectorization files
-with open(SOURCE_VECTORIZATION_PATH, 'rb') as f:
-    source_vectorization = pickle.load(f)
+try:
+    with open(SOURCE_VECTORIZATION_PATH, 'rb') as f:
+        source_vectorization = pickle.load(f)
+except Exception as e:
+    st.error(f"Error loading source vectorization: {e}")
 
-with open(TARGET_VECTORIZATION_PATH, 'rb') as f:
-    target_vectorization = pickle.load(f)
+try:
+    with open(TARGET_VECTORIZATION_PATH, 'rb') as f:
+        target_vectorization = pickle.load(f)
+except Exception as e:
+    st.error(f"Error loading target vectorization: {e}")
 
 # Define vocabulary and decoding parameters
 target_vocab = target_vectorization.get_vocabulary()
@@ -85,7 +94,10 @@ def decode_sequence(input_sentence):
     return decoded_sentence
 
 # Initialize sentiment analysis pipeline for the German language
-sentiment_pipeline = pipeline("sentiment-analysis", model="oliverguhr/german-sentiment-bert")
+try:
+    sentiment_pipeline = pipeline("sentiment-analysis", model="oliverguhr/german-sentiment-bert")
+except Exception as e:
+    st.error(f"Error initializing sentiment analysis pipeline: {e}")
 
 # Streamlit app interface
 st.title("English to German Translation and Sentiment Analysis")
@@ -97,7 +109,10 @@ if st.button("Translate"):
     if input_sentence:
         translated_sentence = decode_sequence(input_sentence)
         st.write("**German Translation:**", translated_sentence)
-        sentiment = sentiment_pipeline(translated_sentence)
-        st.write("**Sentiment Analysis:**", sentiment)
+        try:
+            sentiment = sentiment_pipeline(translated_sentence)
+            st.write("**Sentiment Analysis:**", sentiment)
+        except Exception as e:
+            st.error(f"Error during sentiment analysis: {e}")
     else:
         st.write("Please enter an English sentence.")
