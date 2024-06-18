@@ -34,7 +34,9 @@ class PositionalEmbedding(Layer):
 
     @classmethod
     def from_config(cls, config):
-        return cls(**config)
+        vocab_size = config.pop('vocab_size')
+        d_model = config.pop('d_model')
+        return cls(vocab_size=vocab_size, d_model=d_model, **config)
 
 # Ensure the model files are in the correct path
 MODEL_URL = 'https://drive.google.com/uc?export=download&id=18PvjVRNcJ50CqUKJ-sNILVovIa5vJUj3'
