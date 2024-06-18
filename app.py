@@ -19,7 +19,6 @@ if st.button("Translate"):
             data = response.json()
             st.write("### Translation")
             st.write(f"**German Sentence:** {data['german_sentence']}")
-            st.write(f"**English Sentence:** {data['english_sentence']}")
             st.write(f"**Sentiment:** {data['sentiment']}")
         else:
             st.write("Error:", response.status_code)
