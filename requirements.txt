@@ -1,8 +1,4 @@
-gdown
 streamlit
-tensorflow
+requests
 transformers
-tf-keras
-nltk
-textblob
-flair
+torch
