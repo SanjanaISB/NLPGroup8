@@ -5,3 +5,4 @@ transformers
 tf-keras
 nltk
 textblob
+flair
