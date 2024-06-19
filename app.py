@@ -13,7 +13,7 @@ english_sentence = st.text_input("Enter an English sentence:")
 
 def translate_sentence(english_sentence):
     response = requests.post(
-        "https://5185-35-247-172-177.ngrok-free.app/translate",
+        "https://7537-104-196-166-123.ngrok-free.app/translate",
         json={"sentence": english_sentence}
     )
     if response.status_code == 200:
