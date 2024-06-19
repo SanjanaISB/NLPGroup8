@@ -11,7 +11,7 @@ if st.button("Translate"):
     if german_sentence:
         # Make a POST request to the FastAPI endpoint
         response = requests.post(
-            "https://a37d-34-125-144-125.ngrok-free.app/translate",
+            "https://5185-35-247-172-177.ngrok-free.app/translate",
             json={"sentence": german_sentence}
         )
 
@@ -19,7 +19,6 @@ if st.button("Translate"):
             data = response.json()
             st.write("### Translation")
             st.write(f"**German Sentence:** {data['german_sentence']}")
-            st.write(f"**Sentiment:** {data['sentiment']}")
         else:
             st.write("Error:", response.status_code)
     else:
