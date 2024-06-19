@@ -1,13 +1,6 @@
 import streamlit as st
 import requests
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
-import nltk
-
-# Download the Vader lexicon
-nltk.download('vader_lexicon')
-
-# Initialize the sentiment analyzer
-sid = SentimentIntensityAnalyzer()
+from textblob import TextBlob
 
 # Set the title of the Streamlit app
 st.title("English to German Translation with Sentiment Analysis")
@@ -30,12 +23,12 @@ if st.button("Translate and Analyze Sentiment"):
             st.write(f"**German Sentence:** {german_sentence}")
 
             # Perform sentiment analysis on the German sentence
-            sentiment_scores = sid.polarity_scores(german_sentence)
-            sentiment = max(sentiment_scores, key=sentiment_scores.get)
+            blob = TextBlob(german_sentence)
+            sentiment = blob.sentiment
 
             st.write("### Sentiment Analysis")
-            st.write(f"**Sentiment:** {sentiment.capitalize()}")
-            st.write(f"**Scores:** {sentiment_scores}")
+            st.write(f"**Polarity:** {sentiment.polarity}")
+            st.write(f"**Subjectivity:** {sentiment.subjectivity}")
         else:
             st.write("Error:", response.status_code)
     else:
