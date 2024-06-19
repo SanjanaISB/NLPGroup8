@@ -1,10 +1,9 @@
 import streamlit as st
 import requests
-from flair.models import TextClassifier
-from flair.data import Sentence
+from transformers import pipeline
 
-# Load the Flair sentiment analysis model
-classifier = TextClassifier.load('sentiment')
+# Load the sentiment analysis pipeline
+sentiment_pipeline = pipeline("sentiment-analysis", model="oliverguhr/german-sentiment-bert")
 
 # Set the title of the Streamlit app
 st.title("English to German Translation with Sentiment Analysis")
@@ -24,12 +23,6 @@ def translate_sentence(english_sentence):
         st.write("Error in translation:", response.status_code)
         return None
 
-def analyze_sentiment(german_sentence):
-    sentence = Sentence(german_sentence)
-    classifier.predict(sentence)
-    sentiment = sentence.labels[0]
-    return sentiment
-
 if st.button("Translate and Analyze Sentiment"):
     if english_sentence:
         german_sentence = translate_sentence(english_sentence)
@@ -38,11 +31,11 @@ if st.button("Translate and Analyze Sentiment"):
             st.write(f"**German Sentence:** {german_sentence}")
 
             # Perform sentiment analysis on the German sentence
-            sentiment = analyze_sentiment(german_sentence)
+            sentiment = sentiment_pipeline(german_sentence)[0]
 
             st.write("### Sentiment Analysis")
-            st.write(f"**Sentiment:** {sentiment.value}")
-            st.write(f"**Confidence:** {sentiment.score:.2f}")
+            st.write(f"**Sentiment:** {sentiment['label']}")
+            st.write(f"**Confidence:** {sentiment['score']:.2f}")
         else:
             st.write("Failed to translate the sentence.")
     else:
