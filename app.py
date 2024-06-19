@@ -1,3 +1,5 @@
+!pip install tf-keras
+
 import streamlit as st
 import requests
 from transformers import pipeline
